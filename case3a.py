@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # --- 2. API CONFIGURATIE & DATA FUNCTIE ---
-API_KEY = "347b0b59-9343-48dc-bbd8-720e515e81e3"
+API_KEY = "952e5ef9-7c54-437e-9539-da81ab498118"
 
 @st.cache_data(show_spinner="Live laadpalen ophalen (dit duurt max 15 seconden)...")
 def load_initial_data(limit=5000):
