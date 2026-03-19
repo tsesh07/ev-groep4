@@ -16,21 +16,19 @@ st.set_page_config(
 )
 
 # --- 2. API CONFIGURATIE & DATA FUNCTIE ---
+API_KEY = "347b0b59-9343-48dc-bbd8-720e515e81e3 "
 
-
-API_KEY = "952e5ef9-7c54-437e-9539-da81ab498118"
-
-@st.cache_data(show_spinner="Bezig met voorladen van alle 5000 laadpalen (dit kan even duren)...")
+@st.cache_data(show_spinner="Live laadpalen ophalen (dit duurt max 15 seconden)...")
 def load_initial_data(limit=5000):
     url = f"https://api.openchargemap.io/v3/poi/?output=json&key={API_KEY}&countrycode=NL&maxresults={limit}"
     try:
-        # TIMEOUT FIX: Verhoogd naar 90 seconden
-        response = requests.get(url, timeout=90)
+        # TIMEOUT FIX: Teruggezet naar 15. Als hij er na 15 sec niet is, is de API gwn down.
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        st.error(f"⚠️ De OpenChargeMap API is momenteel te traag of onbereikbaar. Foutmelding: {e}")
-        return [] # Return lege lijst zodat de app niet crasht
+        # We geven geen harde error, maar retourneren een lege lijst. De app vangt dit later netjes op!
+        return []
 
 @st.cache_data
 def process_data_for_insights(raw_data):
@@ -72,13 +70,16 @@ def laad_en_clean_cbs_data(bestandsnaam):
         df_cbs = df_cbs.dropna(subset=['Inwoners'])
         return df_cbs[['Stad_Clean', 'Inwoners']]
     except Exception as e:
-        st.error(f"Fout bij inladen CBS data. Zorg dat '{bestandsnaam}' in de map staat. Fout: {e}")
+        st.error(f"Fout bij inladen CBS data. Controleer of '{bestandsnaam}' exact zo op GitHub staat. Fout: {e}")
         return pd.DataFrame()
 
-# Direct laden bij opstarten
+# --- DATA EXECUTIE: VOLGORDE OMGEKEERD VOOR SNELHEID ---
+# 1. Lokale bestanden eerst (laden in 0.1 sec)
+cbs_data = laad_en_clean_cbs_data('regionaal_2025.csv')
+
+# 2. API Data pas als laatste (kan traag zijn)
 all_data_raw = load_initial_data(5000)
 df = process_data_for_insights(all_data_raw)
-cbs_data = laad_en_clean_cbs_data('regionaal_2025.csv')
 
 PROVINCIE_COORDS = {
     "Alle": [52.1326, 5.2913], "Noord-Holland": [52.5206, 4.8889],
@@ -104,7 +105,7 @@ st.sidebar.info("Gemaakt door Juri van der Ster, Micha Bakker, Sai Hong Tse, Sti
 
 # --- 4. PAGINA LOGICA ---
 
-if page == "🏠 Home":
+if page == "🏠 Landingspagina":
     st.title("⚡ Is de Nederlandse laadinfrastructuur eerlijk verdeeld?")
     
     st.markdown("""
@@ -114,12 +115,15 @@ if page == "🏠 Home":
     
     st.divider()
 
+    st.subheader("📊 De dataset in vogelvlucht")
+    # De slimme check: laat de cijfers alleen zien als de API succesvol is geladen!
     if not df.empty:
-        st.subheader("📊 De dataset in vogelvlucht")
         c1, c2, c3 = st.columns(3)
-        c1.metric("🔌 Totaal Punten", f"{len(df):,}".replace(',', '.'))
+        c1.metric("🔌 Totaal Punten (API)", f"{len(df):,}".replace(',', '.'))
         c2.metric("⚡ Gem. Snelheid", f"{df['KW'].mean():.1f} kW")
         c3.metric("🏙️ Aantal Steden", df['Town'].nunique())
+    else:
+        st.warning("⚠️ Live API Data is momenteel niet beschikbaar. De OpenChargeMap server is overbelast. Probeer het later nog eens!")
     
     st.divider()
 
@@ -129,9 +133,9 @@ if page == "🏠 Home":
         st.markdown("### 🧭 Wat vind je in dit dashboard?")
         st.markdown("""
         Gebruik het menu aan de linkerkant om door onze analyses te navigeren:
-        * **🗺️ Kaart:** Een geografische weergave van de laadpalen, inclusief een filter voor snelladers.
+        * **🗺️ Interactieve Kaart:** Een geografische weergave van de laadpalen, inclusief een filter voor snelladers en een CBS-laag.
         * **📈 KPI Dashboard:** Onze diepte-analyse waarbij we laadpalen afzetten tegen het aantal inwoners. Hier beantwoorden we de vraag over 'eerlijke verdeling'.
-        * **📊 Inzichten & Vergelijking:** Grafieken die de kwaliteit (snelheid) afzetten tegen de kwantiteit (aantal) per stad.
+        * **🔮 Voorspellend Model:** Een Lineaire Regressie analyse die direct aantoont welke gemeenten achterblijven of voorlopen op de landelijke trend.
         """)
         
     with col_rechts:
@@ -145,10 +149,12 @@ if page == "🏠 Home":
         """)
 
     st.markdown("---")
-    st.markdown("**Gemaakt door:** *Juri van der Ster, Stijn Kooistra, Sai-Hong Tse & Micha Bakker* | Minor Data Science")
-
+    
 elif page == "🗺️ Interactieve Kaart":
     st.title("🗺️ Interactieve Kaart")
+
+    if not all_data_raw:
+        st.error("⚠️ De server van OpenChargeMap (API) is momenteel overbelast of onbereikbaar. De laadpalen kunnen nu niet getoond worden. Je kunt wel de CBS laag bekijken.")
 
     @st.cache_data
     def load_cbs_and_geo():
@@ -282,7 +288,7 @@ elif page == "📈 KPI Dashboard":
     st.markdown("Dit dashboard combineert onze live laadpaal-data met CBS-inwonersaantallen. Zo zien we pas écht of de laadinfrastructuur eerlijk is verdeeld onder de bevolking.")
 
     if df.empty or cbs_data.empty:
-        st.warning("Data is nog aan het laden of de CBS data ontbreekt (controleer de bestandsnaam).")
+        st.warning("Data is nog aan het laden, of de CBS/API data ontbreekt (controleer de verbinding).")
     else:
         city_stats = df.groupby('Town').agg({'KW': ['count', 'mean']}).reset_index()
         city_stats.columns = ['Stad', 'Aantal_Punten', 'Gem_Snelheid']
@@ -349,13 +355,10 @@ elif page == "🔮 Voorspellend Model":
     st.markdown("""
     Dit model gebruikt **lineaire regressie** om op basis van het inwonersaantal te voorspellen hoeveel laadpalen 
     een gemeente *zou moeten* hebben. Het verschil tussen de voorspelling en de werkelijkheid noemen we het **residu**.
-    
-    * Een **negatief residu** betekent: deze gemeente heeft *minder* palen dan verwacht → mogelijk onderbedeeld.
-    * Een **positief residu** betekent: deze gemeente heeft *meer* palen dan verwacht → relatief goed bedeeld.
     """)
 
     if df.empty or cbs_data.empty:
-        st.warning("Data is nog aan het laden of de CBS data ontbreekt.")
+        st.warning("⚠️ Data ontbreekt. Check of de API en CSV bereikbaar zijn.")
     else:
         city_stats = df.groupby('Town').agg({'KW': ['count']}).reset_index()
         city_stats.columns = ['Stad', 'Aantal_Punten']
@@ -382,8 +385,6 @@ elif page == "🔮 Voorspellend Model":
             st.divider()
 
             st.subheader("1. Regressielijn: Inwoners vs. Laadpalen")
-            st.markdown("_Punten ver onder de lijn zijn potentieel onderbedeeld._")
-
             fig_reg = px.scatter(
                 merged_df, x='Inwoners', y='Aantal_Punten',
                 hover_name='Stad',
@@ -397,8 +398,6 @@ elif page == "🔮 Voorspellend Model":
             st.plotly_chart(fig_reg, use_container_width=True)
 
             st.subheader("2. Residuenanalyse: Wie zit boven of onder de verwachting?")
-            st.markdown("_Rood = minder palen dan verwacht (achterblijvers). Groen = meer dan verwacht (voorlopers)._")
-
             top_bottom = pd.concat([merged_df.head(15), merged_df.tail(15)]).drop_duplicates()
             top_bottom['Kleur'] = top_bottom['Residu'].apply(lambda x: 'Achterblijver' if x < 0 else 'Voorloper')
 
@@ -412,13 +411,9 @@ elif page == "🔮 Voorspellend Model":
                 title="Top 15 achterblijvers en voorlopers"
             )
             st.plotly_chart(fig_residu, use_container_width=True)
-
+            
             st.subheader("3. Volledige Residuentabel")
-            st.markdown("Bekijk voor elke gemeente het werkelijke aantal, de voorspelling en het verschil.")
             tabel = merged_df[['Stad', 'Inwoners', 'Aantal_Punten', 'Voorspeld', 'Residu']].copy()
             tabel['Voorspeld'] = tabel['Voorspeld'].round(1)
             tabel['Residu'] = tabel['Residu'].round(1)
-            tabel['Inwoners'] = tabel['Inwoners'].astype(int)
-            tabel['Aantal_Punten'] = tabel['Aantal_Punten'].astype(int)
-            tabel = tabel.sort_values('Residu').reset_index(drop=True)
             st.dataframe(tabel, use_container_width=True)
