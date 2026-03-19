@@ -16,18 +16,17 @@ st.set_page_config(
 )
 
 # --- 2. API CONFIGURATIE & DATA FUNCTIE ---
-API_KEY = "347b0b59-9343-48dc-bbd8-720e515e81e3 "
+API_KEY = "347b0b59-9343-48dc-bbd8-720e515e81e3"
 
 @st.cache_data(show_spinner="Live laadpalen ophalen (dit duurt max 15 seconden)...")
 def load_initial_data(limit=5000):
     url = f"https://api.openchargemap.io/v3/poi/?output=json&key={API_KEY}&countrycode=NL&maxresults={limit}"
     try:
-        # TIMEOUT FIX: Teruggezet naar 15. Als hij er na 15 sec niet is, is de API gwn down.
+        # TIMEOUT: na 15 geen reactie, API down
         response = requests.get(url, timeout=15)
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        # We geven geen harde error, maar retourneren een lege lijst. De app vangt dit later netjes op!
         return []
 
 @st.cache_data
@@ -73,7 +72,6 @@ def laad_en_clean_cbs_data(bestandsnaam):
         st.error(f"Fout bij inladen CBS data. Controleer of '{bestandsnaam}' exact zo op GitHub staat. Fout: {e}")
         return pd.DataFrame()
 
-# --- DATA EXECUTIE: VOLGORDE OMGEKEERD VOOR SNELHEID ---
 # 1. Lokale bestanden eerst (laden in 0.1 sec)
 cbs_data = laad_en_clean_cbs_data('regionaal_2025.csv')
 
