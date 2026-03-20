@@ -320,14 +320,27 @@ elif page == "📈 KPI Dashboard":
             gekozen_stad = st.selectbox("Selecteer weergave:", opties)
 
             if gekozen_stad == "Landelijke Top 20 Grafiek":
+                # --- NIEUW: RANDSTAD FILTER ---
+                randstad_steden = ['Amsterdam', 'Rotterdam', 'Den Haag', 'Utrecht', 'Almere', 'Haarlem', 'Leiden', 'Dordrecht', 'Zoetermeer', 'Delft', 'Amersfoort', 'Zaanstad']
+                
+                toon_randstad = st.toggle("🏙️ Isoleer Randstad steden")
+                
+                if toon_randstad:
+                    grafiek_df = merged_df[merged_df['Stad'].isin(randstad_steden)]
+                    grafiek_titel = "Laadpunten per inwoner: De Randstad"
+                else:
+                    grafiek_df = merged_df.head(20)
+                    grafiek_titel = "Top 20 steden met de meeste laadpunten per inwoner"
+
+                # --- GRAFIEK ---
                 fig_kpi = px.bar(
-                    merged_df.head(20), 
+                    grafiek_df, 
                     x='Stad', 
                     y='Palen_per_10k',
                     color='Palen_per_10k',
                     color_continuous_scale='RdYlGn',
                     labels={'Palen_per_10k': 'Palen per 10.000 inw.'},
-                    title="Top 20 steden met de meeste laadpunten per inwoner"
+                    title=grafiek_titel
                 )
                 st.plotly_chart(fig_kpi, use_container_width=True)
                 
